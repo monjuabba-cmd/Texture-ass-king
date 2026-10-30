@@ -1,0 +1,31 @@
+name: Retexture game
+on:
+  workflow_dispatch:
+jobs:
+  retexture:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install UnityPy pillow
+      - name: Get game APK from release tagged "game"
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release download game -p "*.apk" -O game.apk
+      - name: Replace textures
+        run: python tools/retexture.py game.apk input/image unsigned.apk
+      - name: Align and sign
+        run: |
+          BT=$(ls -d "$ANDROID_SDK_ROOT"/build-tools/* | sort -V | tail -1)
+          "$BT/zipalign" -p -f 4 unsigned.apk aligned.apk
+          keytool -genkeypair -keystore ks.jks -alias k -keyalg RSA -keysize 2048 -validity 10000 \
+            -storepass android -keypass android -dname "CN=texmod"
+          "$BT/apksigner" sign --ks ks.jks --ks-pass pass:android --out modded.apk aligned.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: modded-game
+          path: modded.apk
